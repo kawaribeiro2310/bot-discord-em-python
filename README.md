@@ -1,7 +1,3 @@
-Com certeza! Vamos deixar esse README com uma estética clean, usando emojis que combinam com o universo de programação e uma estrutura que valoriza o seu esforço de estudo.
-
-Aqui está uma versão "premium" para o seu repositório:
-
 ⚡ My Discord Lab
 "A melhor maneira de prever o futuro é inventá-lo." > Este repositório é o meu "laboratório" pessoal onde estou desbravando a biblioteca discord.py e transformando café em código. ☕️🚀
 
