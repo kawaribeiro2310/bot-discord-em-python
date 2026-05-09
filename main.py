@@ -1,13 +1,18 @@
 import discord
 import os
 import sqlite3
+import google.generativeai as genai  # <--- NOVA BIBLIOTECA
 from discord import app_commands
 from dotenv import load_dotenv
 from datetime import datetime
 
 load_dotenv()
 
-# --- BANCO DE DADOS ---
+# --- CONFIGURAÇÃO DA IA ---
+genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+model = genai.GenerativeModel('gemini-1.5-flash') # Modelo rápido e eficiente
+
+# --- BANCO DE DADOS --- (Mantido igual)
 def init_db():
     conn = sqlite3.connect('estudos.db')
     cursor = conn.cursor()
@@ -48,21 +53,44 @@ class Cliente(discord.Client):
 
     async def setup_hook(self):
         init_db()
-        
-        # IMPORTANTE: Substitua pelo ID do seu servidor para o comando aparecer NA HORA
-        # Se deixar vazio como await self.tree.sync(), ele tenta sincronizar globalmente (demora)
-        MEU_GUILD_ID = 1475163750003638376  # <--- COLOQUE O ID DO SEU SERVIDOR AQUI
-        
+        MEU_GUILD_ID = 1475163750003638376 
         guild = discord.Object(id=MEU_GUILD_ID)
-        
-        # Copia os comandos para o servidor específico
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
-        
-        print(f"✅ Comandos sincronizados no servidor {MEU_GUILD_ID}!")
+        print(f"✅ Comandos sincronizados!")
 
     async def on_ready(self):
         print(f"✅ Bot online como {self.user}")
+
+    # --- IA NO EVENTO ON_MESSAGE ---
+    async def on_message(self, message):
+        if message.author == self.user:
+            return
+
+        # O bot responde se for mencionado
+        if self.user.mentioned_in(message):
+            async with message.channel.typing():
+                try:
+                    # Limpa a menção do texto para a IA não se confundir
+                    pergunta = message.content.replace(f'<@!{self.user.id}>', '').replace(f'<@{self.user.id}>', '').strip()
+                    
+                    if not pergunta:
+                        await message.reply("Olá! Como posso ajudar nos seus estudos hoje?")
+                        return
+
+                    response = model.generate_content(pergunta)
+                    
+                    # Corta a resposta se exceder 2000 caracteres (limite do Discord)
+                    texto_resposta = response.text[:2000]
+                    await message.reply(texto_resposta)
+                except Exception as e:
+                    await message.reply(f"❌ Erro na IA: {e}")
+
+        await self.process_commands(message)
+
+    async def process_commands(self, message):
+        # Necessário para que comandos slash e on_message coexistam
+        pass
 
     async def on_voice_state_update(self, member, before, after):
         ID_CANAL_LOG = 1500944813334331526
@@ -96,7 +124,6 @@ client = Cliente(intents=intents)
 @client.tree.command(name="perfil", description="Veja seu tempo total de estudo")
 async def perfil(interaction: discord.Interaction):
     total_segundos = buscar_tempo_total(interaction.user.id)
-    
     horas = total_segundos // 3600
     minutos = (total_segundos % 3600) // 60
     
@@ -105,5 +132,15 @@ async def perfil(interaction: discord.Interaction):
     embed.set_thumbnail(url=interaction.user.display_avatar.url)
     
     await interaction.response.send_message(embed=embed)
+
+# Comando Slash opcional para a IA
+@client.tree.command(name="duvida", description="Tire uma dúvida com a IA")
+async def duvida(interaction: discord.Interaction, pergunta: str):
+    await interaction.response.defer() # Dá mais tempo para a IA pensar
+    try:
+        response = model.generate_content(pergunta)
+        await interaction.followup.send(response.text[:2000])
+    except Exception as e:
+        await interaction.followup.send(f"Erro: {e}")
 
 client.run(os.getenv('TOKEN_BOT'))
