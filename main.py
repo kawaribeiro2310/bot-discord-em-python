@@ -1,7 +1,7 @@
 import discord
 import os
 import sqlite3
-import google.generativeai as genai  # <--- NOVA BIBLIOTECA
+import google.generativeai as genai 
 from discord import app_commands
 from dotenv import load_dotenv
 from datetime import datetime
@@ -10,9 +10,10 @@ load_dotenv()
 
 # --- CONFIGURAÇÃO DA IA ---
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-model = genai.GenerativeModel('gemini-1.5-flash') # Modelo rápido e eficiente
+# CORREÇÃO AQUI: Ajustado o nome do modelo para evitar o erro 404 de rota da API
+model = genai.GenerativeModel('gemini-1.5-flash-latest') 
 
-# --- BANCO DE DADOS --- (Mantido igual)
+# --- BANCO DE DADOS ---
 def init_db():
     conn = sqlite3.connect('estudos.db')
     cursor = conn.cursor()
@@ -57,7 +58,7 @@ class Cliente(discord.Client):
         guild = discord.Object(id=MEU_GUILD_ID)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
-        print(f"✅ Comandos sincronizados!")
+        print(f"✅ Comandos sincronizados para o servidor {MEU_GUILD_ID}!")
 
     async def on_ready(self):
         print(f"✅ Bot online como {self.user}")
@@ -67,11 +68,9 @@ class Cliente(discord.Client):
         if message.author == self.user:
             return
 
-        # O bot responde se for mencionado
         if self.user.mentioned_in(message):
             async with message.channel.typing():
                 try:
-                    # Limpa a menção do texto para a IA não se confundir
                     pergunta = message.content.replace(f'<@!{self.user.id}>', '').replace(f'<@{self.user.id}>', '').strip()
                     
                     if not pergunta:
@@ -80,17 +79,13 @@ class Cliente(discord.Client):
 
                     response = model.generate_content(pergunta)
                     
-                    # Corta a resposta se exceder 2000 caracteres (limite do Discord)
-                    texto_resposta = response.text[:2000]
+                    texto_resposta = response.text
+                    if len(texto_resposta) > 2000:
+                        texto_resposta = texto_resposta[:1990] + "... (cortado)"
+                        
                     await message.reply(texto_resposta)
                 except Exception as e:
                     await message.reply(f"❌ Erro na IA: {e}")
-
-        await self.process_commands(message)
-
-    async def process_commands(self, message):
-        # Necessário para que comandos slash e on_message coexistam
-        pass
 
     async def on_voice_state_update(self, member, before, after):
         ID_CANAL_LOG = 1500944813334331526
@@ -133,13 +128,16 @@ async def perfil(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed)
 
-# Comando Slash opcional para a IA
 @client.tree.command(name="duvida", description="Tire uma dúvida com a IA")
 async def duvida(interaction: discord.Interaction, pergunta: str):
-    await interaction.response.defer() # Dá mais tempo para a IA pensar
+    await interaction.response.defer() 
     try:
         response = model.generate_content(pergunta)
-        await interaction.followup.send(response.text[:2000])
+        texto_resposta = response.text
+        if len(texto_resposta) > 2000:
+            texto_resposta = texto_resposta[:1990] + "... (cortado)"
+            
+        await interaction.followup.send(texto_resposta)
     except Exception as e:
         await interaction.followup.send(f"Erro: {e}")
 
