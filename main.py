@@ -1,7 +1,7 @@
 import discord
 import os
 import sqlite3
-import google.generativeai as genai 
+from google import genai  # Novo SDK Oficial do Google
 from discord import app_commands
 from dotenv import load_dotenv
 from datetime import datetime
@@ -9,9 +9,10 @@ from datetime import datetime
 load_dotenv()
 
 # --- CONFIGURAÇÃO DA IA ---
-genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-# CORREÇÃO AQUI: Ajustado o nome do modelo para evitar o erro 404 de rota da API
-model = genai.GenerativeModel('gemini-1.5-flash-latest') 
+# Inicializa o cliente padrão do novo SDK
+ai_client = genai.Client() 
+# CORREÇÃO CRUCIAL: Atualizado para o modelo atual e suportado na API pública
+MODELO_IA = 'gemini-2.5-flash'
 
 # --- BANCO DE DADOS ---
 def init_db():
@@ -63,21 +64,28 @@ class Cliente(discord.Client):
     async def on_ready(self):
         print(f"✅ Bot online como {self.user}")
 
-    # --- IA NO EVENTO ON_MESSAGE ---
+    # --- IA NO EVENTO ON_MESSAGE (RESPONDE AO MARCAR) ---
     async def on_message(self, message):
+        # Ignora mensagens do próprio bot
         if message.author == self.user:
             return
 
+        # Responde se for marcado (@Bot)
         if self.user.mentioned_in(message):
             async with message.channel.typing():
                 try:
+                    # Limpa as menções cruas (<@ID>) para que a IA receba apenas o texto limpo
                     pergunta = message.content.replace(f'<@!{self.user.id}>', '').replace(f'<@{self.user.id}>', '').strip()
                     
                     if not pergunta:
-                        await message.reply("Olá! Como posso ajudar nos seus estudos hoje?")
+                        await message.reply("Olá! Como posso ajudar nos seus estudos hoje? Marque-me e faça uma pergunta!")
                         return
 
-                    response = model.generate_content(pergunta)
+                    # Envia a pergunta para o modelo estável
+                    response = ai_client.models.generate_content(
+                        model=MODELO_IA,
+                        contents=pergunta,
+                    )
                     
                     texto_resposta = response.text
                     if len(texto_resposta) > 2000:
@@ -85,7 +93,7 @@ class Cliente(discord.Client):
                         
                     await message.reply(texto_resposta)
                 except Exception as e:
-                    await message.reply(f"❌ Erro na IA: {e}")
+                    await message.reply(f"❌ Erro na IA ao responder menção: {e}")
 
     async def on_voice_state_update(self, member, before, after):
         ID_CANAL_LOG = 1500944813334331526
@@ -112,7 +120,7 @@ class Cliente(discord.Client):
 intents = discord.Intents.default()
 intents.members = True
 intents.voice_states = True
-intents.message_content = True
+intents.message_content = True  # Obrigatório para capturar o texto das menções
 
 client = Cliente(intents=intents)
 
@@ -132,7 +140,10 @@ async def perfil(interaction: discord.Interaction):
 async def duvida(interaction: discord.Interaction, pergunta: str):
     await interaction.response.defer() 
     try:
-        response = model.generate_content(pergunta)
+        response = ai_client.models.generate_content(
+            model=MODELO_IA,
+            contents=pergunta,
+        )
         texto_resposta = response.text
         if len(texto_resposta) > 2000:
             texto_resposta = texto_resposta[:1990] + "... (cortado)"
